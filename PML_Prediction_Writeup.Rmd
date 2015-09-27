@@ -1,0 +1,114 @@
+---
+title: "Human Activity Recognition"
+author: "smaione"
+date: "Wednesday, December 17, 2014"
+output: html_document
+---
+
+
+## Get the Data
+
+```{r, cache=FALSE}
+rm(list=ls()); par(mfrow=c(1, 1))
+#setwd(paste("C:/Users/Me/Documents/OnlineEDU/Coursera/DS_Specialization",
+#            "/Practical_Machine_Learning/Course_Project/", sep=""))
+```
+
+```{r, cache=TRUE}
+trainURL <- paste("http://d396qusza40orc.cloudfront.net",
+                 "/predmachlearn/pml-training.csv", sep="")
+testURL <- paste("http://d396qusza40orc.cloudfront.net",
+                 "/predmachlearn/pml-testing.csv", sep="")
+
+download.file(trainURL, "./pml-training.csv")
+download.file(testURL, "./pml-testing.csv")
+
+train_data <- read.csv("./pml-training.csv", na.strings=c("", "NA"))
+test_data <- read.csv("./pml-testing.csv", na.strings=c("", "NA"))
+```
+
+
+## Preprocess
+
+```{r, cache=TRUE}
+# remove ID variable
+test_data <- test_data[, -160]
+
+# remove first seven columns from each dataset
+train_data <- train_data[, -1:-7]
+test_data <- test_data[, -1:-7]
+
+# create dummy variables based on the levels of classe
+train_classe_A <- as.numeric(train_data$classe == 'A')
+train_classe_B <- as.numeric(train_data$classe == 'B')
+train_classe_C <- as.numeric(train_data$classe == 'C')
+train_classe_D <- as.numeric(train_data$classe == 'D')
+train_classe_E <- as.numeric(train_data$classe == 'E')
+
+train_data <- train_data[, -which(names(train_data) == 'classe')]
+
+# create placeholder classe variables for the test set
+test_classe_A <- numeric(length = 20)
+test_classe_B <- numeric(length = 20)
+test_classe_C <- numeric(length = 20)
+test_classe_D <- numeric(length = 20)
+test_classe_E <- numeric(length = 20)
+
+# remove any variables that may have missing data
+missing_vals <- sapply(train_data, function(x) { sum(is.na(x)) })
+complete_variables <- names(missing_vals[missing_vals == 0])
+
+train_data <- train_data[, complete_variables]
+test_data <- test_data[, complete_variables]
+
+# standard normalize the data
+n <- ncol(train_data)
+for (i in 1:(n - 1)) {
+    mu <- mean(train_data[, i])
+    sigma <- sd(train_data[, i])
+    
+    train_data[, i] <- (train_data[, i] - mu) / sigma
+    test_data[, i] <- (test_data[, i] - mu) / sigma
+}
+```
+
+I shuffle the rows of the training data so cross validation folds are not biased.
+```{r shuffle, cache=TRUE}
+m <- nrow(train_data)
+shuffle <- sample(1:m, replace=F)
+train_data <- train_data[shuffle, ]
+```
+
+
+## Build Model
+
+```{r create cross-validation folds, cache=TRUE}
+library(caret)
+
+#names(getModelInfo())
+
+tree_A <- train(train_classe_A ~ ., method='rpart', data=train_data,
+                trControl=trainControl(method='cv', number=10))
+tree_B <- train(train_classe_B ~ ., method='rpart', data=train_data,
+                trControl=trainControl(method='cv', number=10))
+tree_C <- train(train_classe_C ~ ., method='rpart', data=train_data,
+                trControl=trainControl(method='cv', number=10))
+tree_D <- train(train_classe_D ~ ., method='rpart', data=train_data,
+                trControl=trainControl(method='cv', number=10))
+tree_E <- train(train_classe_E ~ ., method='rpart', data=train_data,
+                trControl=trainControl(method='cv', number=10))
+
+rf_ <- train(train_classe_A ~ ., method='rf', data=train_data, 
+              trControl=trainControl(method='cv', number=3))
+rf_A <- train(train_classe_A ~ ., method='rf', data=train_data, 
+              trControl=trainControl(method='cv', number=3))
+rf_A <- train(train_classe_A ~ ., method='rf', data=train_data, 
+              trControl=trainControl(method='cv', number=3))
+rf_A <- train(train_classe_A ~ ., method='rf', data=train_data, 
+              trControl=trainControl(method='cv', number=3))
+
+predict(rf_A, train_data)
+
+
+```
+

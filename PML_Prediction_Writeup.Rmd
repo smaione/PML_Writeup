@@ -1,7 +1,6 @@
 ---
 title: "Human Activity Recognition"
 author: "smaione"
-date: "Wednesday, December 17, 2014"
 output: html_document
 ---
 
@@ -10,8 +9,6 @@ output: html_document
 
 ```{r, cache=FALSE}
 rm(list=ls()); par(mfrow=c(1, 1))
-#setwd(paste("C:/Users/Me/Documents/OnlineEDU/Coursera/DS_Specialization",
-#            "/Practical_Machine_Learning/Course_Project/", sep=""))
 ```
 
 ```{r, cache=TRUE}
@@ -30,7 +27,7 @@ test_data <- read.csv("./pml-testing.csv", na.strings=c("", "NA"))
 
 ## Preprocess
 
-```{r, cache=TRUE}
+```{r, cache=FALSE}
 # remove ID variable
 test_data <- test_data[, -160]
 
@@ -61,31 +58,13 @@ complete_variables <- names(missing_vals[missing_vals == 0])
 train_data <- train_data[, complete_variables]
 test_data <- test_data[, complete_variables]
 
-# standard normalize the data
-n <- ncol(train_data)
-for (i in 1:(n - 1)) {
-    mu <- mean(train_data[, i])
-    sigma <- sd(train_data[, i])
-    
-    train_data[, i] <- (train_data[, i] - mu) / sigma
-    test_data[, i] <- (test_data[, i] - mu) / sigma
-}
 ```
-
-I shuffle the rows of the training data so cross validation folds are not biased.
-```{r shuffle, cache=TRUE}
-m <- nrow(train_data)
-shuffle <- sample(1:m, replace=F)
-train_data <- train_data[shuffle, ]
-```
-
 
 ## Build Model
 
-```{r create cross-validation folds, cache=TRUE}
+I am using classifaction trees with 10-fold cross validation.  I train a tree for each dummy variable that was created from the levels of original 'classe' factor.
+```{r, cache=FALSE}
 library(caret)
-
-#names(getModelInfo())
 
 tree_A <- train(train_classe_A ~ ., method='rpart', data=train_data,
                 trControl=trainControl(method='cv', number=10))
@@ -97,18 +76,49 @@ tree_D <- train(train_classe_D ~ ., method='rpart', data=train_data,
                 trControl=trainControl(method='cv', number=10))
 tree_E <- train(train_classe_E ~ ., method='rpart', data=train_data,
                 trControl=trainControl(method='cv', number=10))
-
-rf_ <- train(train_classe_A ~ ., method='rf', data=train_data, 
-              trControl=trainControl(method='cv', number=3))
-rf_A <- train(train_classe_A ~ ., method='rf', data=train_data, 
-              trControl=trainControl(method='cv', number=3))
-rf_A <- train(train_classe_A ~ ., method='rf', data=train_data, 
-              trControl=trainControl(method='cv', number=3))
-rf_A <- train(train_classe_A ~ ., method='rf', data=train_data, 
-              trControl=trainControl(method='cv', number=3))
-
-predict(rf_A, train_data)
-
-
 ```
 
+
+## Estimate the Accuracy
+
+In order to estimate the accuracy of the model, I start by predicting on the training data using the best trees chosen from cross validation.  Each instance in the training set is given a prediction by each tree.
+```{r, cache=FALSE}
+in_sample_A <- predict(tree_A, train_data)
+in_sample_B <- predict(tree_B, train_data)
+in_sample_C <- predict(tree_C, train_data)
+in_sample_D <- predict(tree_D, train_data)
+in_sample_E <- predict(tree_E, train_data)
+```
+
+I choose the class with the highest predicted value as the final prediction.
+```{r, cache=FALSE}
+in_sample_pred <- data.frame(in_sample_A, in_sample_B, in_sample_C,
+                             in_sample_D, in_sample_E)
+
+in_sample_max <- apply(in_sample_pred, 1, which.max)
+```
+
+
+The accuracy is calculated from the ratio of number of misclassifications and actual classification.
+```{r, cache=FALSE}
+y <- train_data <- read.csv("./pml-training.csv",
+                            na.strings=c("", "NA"))$classe
+(in_sample_accuracy <- sum(as.numeric(y) == in_sample_max) / length(y))
+```
+
+
+## Test Prediction
+
+Similar to predicting on the training data, I make a prediction for each test case for each tree.  The highest prediction is chosen as final.
+```{r, cache=FALSE}
+out_sample_A <- predict(tree_A, test_data)
+out_sample_B <- predict(tree_B, test_data)
+out_sample_C <- predict(tree_C, test_data)
+out_sample_D <- predict(tree_D, test_data)
+out_sample_E <- predict(tree_E, test_data)
+
+out_sample_pred <- data.frame(out_sample_A, out_sample_B, out_sample_C,
+                             out_sample_D, out_sample_E)
+
+(out_sample_max <- apply(out_sample_pred, 1, which.max))
+```

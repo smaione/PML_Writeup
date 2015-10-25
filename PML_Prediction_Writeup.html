@@ -68,111 +68,84 @@ img {
 
 <div id="get-the-data" class="section level2">
 <h2>Get the Data</h2>
-<pre class="r"><code>rm(list=ls()); par(mfrow=c(1, 1))</code></pre>
+<p>The caret package is necessary for partitioning data and the ML algorithms used in this project.</p>
+<pre class="r"><code>rm(list=ls()); par(mfrow=c(1, 1))
+library(caret)</code></pre>
+<pre><code>## Loading required package: lattice
+## Loading required package: ggplot2</code></pre>
+<p>The sample and hold-out data sets are downloaded to the working directory and read to the “in_sample” and “out_sample” data frames.</p>
 <pre class="r"><code>trainURL &lt;- paste(&quot;http://d396qusza40orc.cloudfront.net&quot;,
-                 &quot;/predmachlearn/pml-training.csv&quot;, sep=&quot;&quot;)
+                  &quot;/predmachlearn/pml-training.csv&quot;, sep=&quot;&quot;)
 testURL &lt;- paste(&quot;http://d396qusza40orc.cloudfront.net&quot;,
                  &quot;/predmachlearn/pml-testing.csv&quot;, sep=&quot;&quot;)
 
 download.file(trainURL, &quot;./pml-training.csv&quot;)
 download.file(testURL, &quot;./pml-testing.csv&quot;)
 
-train_data &lt;- read.csv(&quot;./pml-training.csv&quot;, na.strings=c(&quot;&quot;, &quot;NA&quot;))
-test_data &lt;- read.csv(&quot;./pml-testing.csv&quot;, na.strings=c(&quot;&quot;, &quot;NA&quot;))</code></pre>
+in_sample &lt;- read.csv(&quot;./pml-training.csv&quot;, na.strings=c(&quot;&quot;, &quot;NA&quot;, &quot;#DIV/0!&quot;))
+out_sample &lt;- read.csv(&quot;./pml-testing.csv&quot;, na.strings=c(&quot;&quot;, &quot;NA&quot;, &quot;#DIV/0!&quot;))</code></pre>
 </div>
 <div id="preprocess" class="section level2">
 <h2>Preprocess</h2>
-<pre class="r"><code># remove ID variable
-test_data &lt;- test_data[, -160]
+<p>Variables that don’t provide any information, such as IDs, are removed as well as those containing NAs.</p>
+<pre class="r"><code># remove first seven columns from each dataset
+in_sample &lt;- in_sample[, -1:-7]
+out_sample &lt;- out_sample[, -1:-7]
 
-# remove first seven columns from each dataset
-train_data &lt;- train_data[, -1:-7]
-test_data &lt;- test_data[, -1:-7]
-
-# create dummy variables based on the levels of classe
-train_classe_A &lt;- as.numeric(train_data$classe == 'A')
-train_classe_B &lt;- as.numeric(train_data$classe == 'B')
-train_classe_C &lt;- as.numeric(train_data$classe == 'C')
-train_classe_D &lt;- as.numeric(train_data$classe == 'D')
-train_classe_E &lt;- as.numeric(train_data$classe == 'E')
-
-train_data &lt;- train_data[, -which(names(train_data) == 'classe')]
-
-# create placeholder classe variables for the test set
-test_classe_A &lt;- numeric(length = 20)
-test_classe_B &lt;- numeric(length = 20)
-test_classe_C &lt;- numeric(length = 20)
-test_classe_D &lt;- numeric(length = 20)
-test_classe_E &lt;- numeric(length = 20)
+# remove ID variable
+out_sample &lt;- out_sample[, -160]
 
 # remove any variables that may have missing data
-missing_vals &lt;- sapply(train_data, function(x) { sum(is.na(x)) })
-complete_variables &lt;- names(missing_vals[missing_vals == 0])
-
-train_data &lt;- train_data[, complete_variables]
-test_data &lt;- test_data[, complete_variables]</code></pre>
+num_NAs &lt;- apply(in_sample, 2, function(x) { sum(is.na(x)) } )
+in_sample &lt;- in_sample[, which(num_NAs == 0)]
+out_sample &lt;- out_sample[, which(num_NAs == 0)]</code></pre>
+<p>The in_sample data is partitioned into training and test sets with a 7:3 ratio respectively.</p>
+<pre class="r"><code>inTrain &lt;- createDataPartition(y=in_sample$classe, p=0.7, list=F)
+train_data &lt;- in_sample[inTrain, ]
+test_data &lt;- in_sample[-inTrain, ]</code></pre>
 </div>
 <div id="build-model" class="section level2">
 <h2>Build Model</h2>
-<p>I am using classifaction trees with 10-fold cross validation. I train a tree for each dummy variable that was created from the levels of original ‘classe’ factor.</p>
-<pre class="r"><code>library(caret)</code></pre>
-<pre><code>## Loading required package: lattice
-## Loading required package: ggplot2</code></pre>
-<pre class="r"><code>tree_A &lt;- train(train_classe_A ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))</code></pre>
+<p>Two models are built for comparison. The first involves a single tree and the next a forest. 3-fold cross validation is used in each case.</p>
+<pre class="r"><code>tree &lt;- train(classe ~ ., method='rpart', data=train_data,
+              trControl=trainControl(method='cv', number=3))</code></pre>
 <pre><code>## Loading required package: rpart</code></pre>
-<pre><code>## Warning in nominalTrainWorkflow(x = x, y = y, wts = weights, info =
-## trainInfo, : There were missing values in resampled performance measures.</code></pre>
-<pre class="r"><code>tree_B &lt;- train(train_classe_B ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))</code></pre>
-<pre><code>## Warning in nominalTrainWorkflow(x = x, y = y, wts = weights, info =
-## trainInfo, : There were missing values in resampled performance measures.</code></pre>
-<pre class="r"><code>tree_C &lt;- train(train_classe_C ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))</code></pre>
-<pre><code>## Warning in nominalTrainWorkflow(x = x, y = y, wts = weights, info =
-## trainInfo, : There were missing values in resampled performance measures.</code></pre>
-<pre class="r"><code>tree_D &lt;- train(train_classe_D ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))</code></pre>
-<pre><code>## Warning in nominalTrainWorkflow(x = x, y = y, wts = weights, info =
-## trainInfo, : There were missing values in resampled performance measures.</code></pre>
-<pre class="r"><code>tree_E &lt;- train(train_classe_E ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))</code></pre>
-<pre><code>## Warning in nominalTrainWorkflow(x = x, y = y, wts = weights, info =
-## trainInfo, : There were missing values in resampled performance measures.</code></pre>
+<pre class="r"><code>forest &lt;- train(classe ~ ., method='rf', data=train_data,
+                trControl=trainControl(method='cv', number=3))</code></pre>
+<pre><code>## Loading required package: randomForest
+## randomForest 4.6-10
+## Type rfNews() to see new features/changes/bug fixes.</code></pre>
 </div>
 <div id="estimate-the-accuracy" class="section level2">
 <h2>Estimate the Accuracy</h2>
-<p>In order to estimate the accuracy of the model, I start by predicting on the training data using the best trees chosen from cross validation. Each instance in the training set is given a prediction by each tree.</p>
-<pre class="r"><code>in_sample_A &lt;- predict(tree_A, train_data)
-in_sample_B &lt;- predict(tree_B, train_data)
-in_sample_C &lt;- predict(tree_C, train_data)
-in_sample_D &lt;- predict(tree_D, train_data)
-in_sample_E &lt;- predict(tree_E, train_data)</code></pre>
-<p>I choose the class with the highest predicted value as the final prediction.</p>
-<pre class="r"><code>in_sample_pred &lt;- data.frame(in_sample_A, in_sample_B, in_sample_C,
-                             in_sample_D, in_sample_E)
-
-in_sample_max &lt;- apply(in_sample_pred, 1, which.max)</code></pre>
-<p>The accuracy is calculated from the ratio of number of misclassifications and actual classification.</p>
-<pre class="r"><code>y &lt;- train_data &lt;- read.csv(&quot;./pml-training.csv&quot;,
-                            na.strings=c(&quot;&quot;, &quot;NA&quot;))$classe
-(in_sample_accuracy &lt;- sum(as.numeric(y) == in_sample_max) / length(y))</code></pre>
-<pre><code>## [1] 0.5660483</code></pre>
+<p>The accuracies are calculated by dividing the number of correct predictions by the total number of predictions. The tree’s accuracy is followed by the forest’s.</p>
+<pre class="r"><code>answers &lt;- predict(tree, test_data)
+sum(answers == test_data$classe) / nrow(test_data)</code></pre>
+<pre><code>## [1] 0.4953271</code></pre>
+<pre class="r"><code>answers &lt;- predict(forest, test_data)
+sum(answers == test_data$classe) / nrow(test_data)</code></pre>
+<pre><code>## [1] 0.9923534</code></pre>
 </div>
 <div id="test-prediction" class="section level2">
 <h2>Test Prediction</h2>
-<p>Similar to predicting on the training data, I make a prediction for each test case for each tree. The highest prediction is chosen as final.</p>
-<pre class="r"><code>out_sample_A &lt;- predict(tree_A, test_data)
-out_sample_B &lt;- predict(tree_B, test_data)
-out_sample_C &lt;- predict(tree_C, test_data)
-out_sample_D &lt;- predict(tree_D, test_data)
-out_sample_E &lt;- predict(tree_E, test_data)
+<p>With the confidence that a random forest is the superior model, the final forest is built from the entire training sample that was downloaded at the start rather than just the 70% partition.</p>
+<pre class="r"><code>forest &lt;- train(classe ~ ., method='rf', data=in_sample,
+                trControl=trainControl(method='cv', number=3))</code></pre>
+<p>The final predictions are now made on the out of sample data.</p>
+<pre class="r"><code>(submissions &lt;- predict(forest, out_sample))</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
+## Levels: A B C D E</code></pre>
+<p>Each out of sample prediction is written to a separate text file.</p>
+<pre class="r"><code>pml_write_files = function(x) {
+    n = length(x)
+    for (i in 1:n) {
+        filename &lt;- paste0(&quot;problem_id_&quot;,i,&quot;.txt&quot;)
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
 
-out_sample_pred &lt;- data.frame(out_sample_A, out_sample_B, out_sample_C,
-                             out_sample_D, out_sample_E)
-
-(out_sample_max &lt;- apply(out_sample_pred, 1, which.max))</code></pre>
-<pre><code>##  [1] 4 1 1 3 3 5 4 4 1 4 1 1 3 1 1 1 3 4 4 1</code></pre>
+setwd(&quot;Submissions/&quot;)
+pml_write_files(submissions)</code></pre>
 </div>
 
 

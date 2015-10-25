@@ -7,118 +7,99 @@ output: html_document
 
 ## Get the Data
 
-```{r, cache=FALSE}
+The caret package is necessary for partitioning data and the ML algorithms used in this project.
+```{r, results="hide"}
 rm(list=ls()); par(mfrow=c(1, 1))
+library(caret)
 ```
 
+The sample and hold-out data sets are downloaded to the working directory and read to the "in\_sample" and "out\_sample" data frames.
 ```{r, cache=TRUE}
+
 trainURL <- paste("http://d396qusza40orc.cloudfront.net",
-                 "/predmachlearn/pml-training.csv", sep="")
+                  "/predmachlearn/pml-training.csv", sep="")
 testURL <- paste("http://d396qusza40orc.cloudfront.net",
                  "/predmachlearn/pml-testing.csv", sep="")
 
 download.file(trainURL, "./pml-training.csv")
 download.file(testURL, "./pml-testing.csv")
 
-train_data <- read.csv("./pml-training.csv", na.strings=c("", "NA"))
-test_data <- read.csv("./pml-testing.csv", na.strings=c("", "NA"))
+in_sample <- read.csv("./pml-training.csv", na.strings=c("", "NA", "#DIV/0!"))
+out_sample <- read.csv("./pml-testing.csv", na.strings=c("", "NA", "#DIV/0!"))
 ```
 
 
 ## Preprocess
 
+Variables that don't provide any information, such as IDs, are removed as well as those containing NAs.
 ```{r, cache=FALSE}
-# remove ID variable
-test_data <- test_data[, -160]
-
 # remove first seven columns from each dataset
-train_data <- train_data[, -1:-7]
-test_data <- test_data[, -1:-7]
+in_sample <- in_sample[, -1:-7]
+out_sample <- out_sample[, -1:-7]
 
-# create dummy variables based on the levels of classe
-train_classe_A <- as.numeric(train_data$classe == 'A')
-train_classe_B <- as.numeric(train_data$classe == 'B')
-train_classe_C <- as.numeric(train_data$classe == 'C')
-train_classe_D <- as.numeric(train_data$classe == 'D')
-train_classe_E <- as.numeric(train_data$classe == 'E')
-
-train_data <- train_data[, -which(names(train_data) == 'classe')]
-
-# create placeholder classe variables for the test set
-test_classe_A <- numeric(length = 20)
-test_classe_B <- numeric(length = 20)
-test_classe_C <- numeric(length = 20)
-test_classe_D <- numeric(length = 20)
-test_classe_E <- numeric(length = 20)
+# remove ID variable
+out_sample <- out_sample[, -160]
 
 # remove any variables that may have missing data
-missing_vals <- sapply(train_data, function(x) { sum(is.na(x)) })
-complete_variables <- names(missing_vals[missing_vals == 0])
+num_NAs <- apply(in_sample, 2, function(x) { sum(is.na(x)) } )
+in_sample <- in_sample[, which(num_NAs == 0)]
+out_sample <- out_sample[, which(num_NAs == 0)]
+```
 
-train_data <- train_data[, complete_variables]
-test_data <- test_data[, complete_variables]
-
+The in\_sample data is partitioned into training and test sets with a 7:3 ratio respectively.
+```{r, cache=FALSE}
+inTrain <- createDataPartition(y=in_sample$classe, p=0.7, list=F)
+train_data <- in_sample[inTrain, ]
+test_data <- in_sample[-inTrain, ]
 ```
 
 ## Build Model
 
-I am using classifaction trees with 10-fold cross validation.  I train a tree for each dummy variable that was created from the levels of original 'classe' factor.
-```{r, cache=FALSE}
-library(caret)
+Two models are built for comparison.  The first involves a single tree and the next a forest.  3-fold cross validation is used in each case.
+```{r, results="hide"}
+tree <- train(classe ~ ., method='rpart', data=train_data,
+              trControl=trainControl(method='cv', number=3))
 
-tree_A <- train(train_classe_A ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))
-tree_B <- train(train_classe_B ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))
-tree_C <- train(train_classe_C ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))
-tree_D <- train(train_classe_D ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))
-tree_E <- train(train_classe_E ~ ., method='rpart', data=train_data,
-                trControl=trainControl(method='cv', number=10))
+forest <- train(classe ~ ., method='rf', data=train_data,
+                trControl=trainControl(method='cv', number=3))
 ```
 
 
 ## Estimate the Accuracy
 
-In order to estimate the accuracy of the model, I start by predicting on the training data using the best trees chosen from cross validation.  Each instance in the training set is given a prediction by each tree.
+The accuracies are calculated by dividing the number of correct predictions by the total number of predictions.  The tree's accuracy is followed by the forest's.
 ```{r, cache=FALSE}
-in_sample_A <- predict(tree_A, train_data)
-in_sample_B <- predict(tree_B, train_data)
-in_sample_C <- predict(tree_C, train_data)
-in_sample_D <- predict(tree_D, train_data)
-in_sample_E <- predict(tree_E, train_data)
-```
+answers <- predict(tree, test_data)
+sum(answers == test_data$classe) / nrow(test_data)
 
-I choose the class with the highest predicted value as the final prediction.
-```{r, cache=FALSE}
-in_sample_pred <- data.frame(in_sample_A, in_sample_B, in_sample_C,
-                             in_sample_D, in_sample_E)
-
-in_sample_max <- apply(in_sample_pred, 1, which.max)
-```
-
-
-The accuracy is calculated from the ratio of number of misclassifications and actual classification.
-```{r, cache=FALSE}
-y <- train_data <- read.csv("./pml-training.csv",
-                            na.strings=c("", "NA"))$classe
-(in_sample_accuracy <- sum(as.numeric(y) == in_sample_max) / length(y))
+answers <- predict(forest, test_data)
+sum(answers == test_data$classe) / nrow(test_data)
 ```
 
 
 ## Test Prediction
 
-Similar to predicting on the training data, I make a prediction for each test case for each tree.  The highest prediction is chosen as final.
+With the confidence that a random forest is the superior model, the final forest is built from the entire training sample that was downloaded at the start rather than just the 70% partition.
 ```{r, cache=FALSE}
-out_sample_A <- predict(tree_A, test_data)
-out_sample_B <- predict(tree_B, test_data)
-out_sample_C <- predict(tree_C, test_data)
-out_sample_D <- predict(tree_D, test_data)
-out_sample_E <- predict(tree_E, test_data)
+forest <- train(classe ~ ., method='rf', data=in_sample,
+                trControl=trainControl(method='cv', number=3))
+```
 
-out_sample_pred <- data.frame(out_sample_A, out_sample_B, out_sample_C,
-                             out_sample_D, out_sample_E)
+The final predictions are now made on the out of sample data.
+```{r, cache=FALSE}
+(submissions <- predict(forest, out_sample))
+```
 
-(out_sample_max <- apply(out_sample_pred, 1, which.max))
+Each out of sample prediction is written to a separate text file.
+```{r, cache=FALSE}
+pml_write_files = function(x) {
+    n = length(x)
+    for (i in 1:n) {
+        filename <- paste0("problem_id_",i,".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+
+setwd("Submissions/")
+pml_write_files(submissions)
 ```
